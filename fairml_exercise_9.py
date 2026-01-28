@@ -86,14 +86,18 @@ print("=" * 50)
 def sigmoid(x, reg=1):
     return reg * (1 / (1 + np.exp(-x)))
 
-def fairness_loss(model, X, y_pred, g_train, lam):
+def fairness_loss(model, X, y_true, g_train, lam):
     logits = model(X).squeeze()
-    bce = nn.BCEWithLogitsLoss
-    loss = bce(logits, y_pred)
-    prob_g0 = y_pred[g_train == 0].mean()
-    prob_g1 = y_pred[g_train == 1].mean()
-    disparity = abs(prob_g0 - prob_g1)
-    return loss + sigmoid(disparity, lam) 
+    bce = nn.BCEWithLogitsLoss()
+    loss = bce(logits, y_true)
+    
+    y_pred = (torch.sigmoid(logits) >= 0.5).float()
+
+    p_pos_g0 = y_pred[g_train == 0].mean()
+    p_pos_g1 = y_pred[g_train == 1].mean()
+    disparity = torch.abs(p_pos_g0 - p_pos_g1)
+    
+    return loss + sigmoid(disparity, lam)
 
 def train_model(model, x_train, y_train, group_train, lam=1.0, lr=0.01, epochs=100):
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -116,9 +120,9 @@ def train_pytorch(input, lam):
     groups_tensor = torch.tensor(groups.values, dtype=torch.int64)
 
     for i, (train_idx, val_idx) in enumerate(kf.split(input)):
-        X_train, X_val = X_tensor[train_idx].numpy(), X_tensor[val_idx].numpy()
-        y_train, y_val = y_tensor[train_idx].numpy(), y_tensor[val_idx].numpy()
-        group_train, group_val = groups_tensor[train_idx].numpy(), groups_tensor[val_idx].numpy()
+        X_train, X_val = X_tensor[train_idx], X_tensor[val_idx]
+        y_train, y_val = y_tensor[train_idx], y_tensor[val_idx]
+        group_train, group_val = groups_tensor[train_idx], groups_tensor[val_idx]
         
         model = nn.Linear(X_train.shape[1], 1)
 
@@ -149,7 +153,7 @@ disparities_list = []
 regs = np.arange(0.0, 1.05, 0.05)
 
 for reg in regs:
-    acc, disp = train_pytorch(pd.concat([x1, x2], axis=1), y)
+    acc, disp = train_pytorch(pd.concat([x1, x2], axis=1), reg)
     if reg == 0:
         print("Disparity 0: accuracy is", disp)
     accuracies_list.append(acc)
@@ -163,10 +167,4 @@ plt.grid(True)
 plt.show()
 
 # PART E
-train_pytorch(pd.concat([x1, x2]), 1)
-
-
-
-
-
-     
+#train_pytorch(pd.concat([x1, x2]), 1)
