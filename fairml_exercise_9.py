@@ -91,7 +91,7 @@ def fairness_loss(model, X, y_true, g_train, lam):
     y_pred = torch.sigmoid(logits)
     p_pos_g0 = y_pred[g_train == 0].mean()
     p_pos_g1 = y_pred[g_train == 1].mean()
-    disparity = torch.abs(p_pos_g0 - p_pos_g1)
+    disparity = (p_pos_g0 - p_pos_g1)**2
     
     return loss + lam * disparity
 
