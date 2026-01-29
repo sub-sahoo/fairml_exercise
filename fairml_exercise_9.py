@@ -83,21 +83,17 @@ print("=" * 50)
 #minimize Logistic Regression loss function (log loss) and add disparity term
 #output weights 
 
-def sigmoid(x, reg=1):
-    return reg * (1 / (1 + np.exp(-x)))
-
 def fairness_loss(model, X, y_true, g_train, lam):
     logits = model(X).squeeze()
     bce = nn.BCEWithLogitsLoss()
     loss = bce(logits, y_true)
     
-    y_pred = (torch.sigmoid(logits) >= 0.5).float()
-
+    y_pred = torch.sigmoid(logits)
     p_pos_g0 = y_pred[g_train == 0].mean()
     p_pos_g1 = y_pred[g_train == 1].mean()
     disparity = torch.abs(p_pos_g0 - p_pos_g1)
     
-    return loss + sigmoid(disparity, lam)
+    return loss + lam * disparity
 
 def train_model(model, x_train, y_train, group_train, lam=1.0, lr=0.01, epochs=100):
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -126,7 +122,7 @@ def train_pytorch(input, lam):
         
         model = nn.Linear(X_train.shape[1], 1)
 
-        model = train_model(model, X_tensor[train_idx], y_train, group_train, lam=lam)
+        model = train_model(model, X_train, y_train, group_train, lam=lam)
         
         with torch.no_grad():
             logits_val = model(X_val).squeeze()
@@ -148,23 +144,29 @@ def train_pytorch(input, lam):
     return mean_acc, mean_disp
     
 # Running part D for plot
-accuracies_list = []
-disparities_list = []
-regs = np.arange(0.0, 1.05, 0.05)
+def run_plot(X, title):
+    accuracies_list = []
+    disparities_list = []
+    regs = np.arange(0.0, 1.05, 0.05)
+    
+    for reg in regs:
+        acc, disp = train_pytorch(X, reg)
+        if reg == 0:
+            print("When disparity strength is 0: Disparity: ", disp, "  Accuracy: ", acc)
+        accuracies_list.append(acc)
+        disparities_list.append(disp)
+    
+    plt.plot(disparities_list, accuracies_list)
+    plt.xlabel('Demographic Disparity')
+    plt.ylabel('Accuracy')
+    plt.title(title)
+    plt.grid(True)
+    plt.show()
 
-for reg in regs:
-    acc, disp = train_pytorch(pd.concat([x1, x2], axis=1), reg)
-    if reg == 0:
-        print("Disparity 0: accuracy is", disp)
-    accuracies_list.append(acc)
-    disparities_list.append(disp)
+    return accuracies_list, disparities_list
 
-plt.plot(disparities_list, accuracies_list)
-plt.xlabel('Demographic Disparity')
-plt.ylabel('Accuracy')
-plt.title('Accuracy-Disparity Tradeoff')
-plt.grid(True)
-plt.show()
-
+run_plot(pd.concat([x1, x2], axis=1), "Accuracy-Disparity Tradeoff (x1, x2)")
+         
 # PART E
-#train_pytorch(pd.concat([x1, x2]), 1)
+run_plot(pd.concat([x1, x2, groups], axis=1), "Accuracy–Disparity Tradeoff (x1, x2, group)")
+
