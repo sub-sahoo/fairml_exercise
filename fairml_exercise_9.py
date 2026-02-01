@@ -206,8 +206,11 @@ PART G
 Comparing your accuracy-vs-disparity curves in parts (D) and (E), which option gives a 
 better tradeoff: using group or not using group?
 
-# TODO finish: Using group gives a better tradeoff as seen by the graph which has more points with 
-higher accuracy for lower disparity.
+Using group gives a better tradeoff as seen by the graph which has more points with 
+higher accuracy for lower disparity. Without group the model can only reduce disparity 
+by becoming less sensitive to whatever correlates with group but with group the model 
+can reduce disparity more directly and effectively, allowing us to keep a higher accuracy
+at the same disparity level. 
 
 
 PART H
@@ -216,7 +219,19 @@ Describe a decision-making scenario that might have led to this toy problem. Spe
 state what the outcome, x1, x2, and group variables are. In this scenario, describe which 
 classifier (if any) would you use and what factors would you consider in making your choice
 
-# TODO
+Let's look at the problem of whether to give a criminal pretrial bail or to not give them bail. 
+The outcome of this would be whether the person appears in court for their hearing or if they 
+fail to appear in court or are rearrested before then which is binary. x1 would be a continuous
+factor such as number of prior missed court appearances. x2 could be a continuous measure of 
+stability or support such as employment stability calculated using number of years of past
+continual employment. Group could be a binary of race, such as 'black' being 1 and 'not black'
+being 0. You could use logistic regression classifier with a fairness regularization term to
+prevent producing large demographic disparities to get a higher accuracy. We can tune the 
+fairness regularized classifier to allow a choice between more accuracy or less demographic
+disparity. Factors that we should consider when making this choice is of course accuracy of
+predictions since pretrial bail has important consequences on a person's life. We also consider
+demographic disparity and the transparency of the algorithm biases to judges in order for
+them to make more informed decisions. 
 
 
 """
