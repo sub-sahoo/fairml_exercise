@@ -29,7 +29,7 @@ def train_and_test(X, y):
     disparities = []
 
     print(f"{'Fold':<10} | {'Accuracy':<12} | {'Demographic Disparity':<20}")
-    print("-" * 50)
+    # print("-" * 50)
 
     for i, (train_index, val_index) in enumerate(kf.split(X)):
         X_train, X_val = X.iloc[train_index], X.iloc[val_index]
@@ -50,7 +50,7 @@ def train_and_test(X, y):
         disparity = abs(prob_g0 - prob_g1)
         disparities.append(disparity)
         
-        print(f"{i+1:<10} | {acc:<12.4f} | {disparity:<20.4f}")
+        # print(f"{i+1:<10} | {acc:<12.4f} | {disparity:<20.4f}")
 
     print("-" * 40)
     print(f"{'AVERAGE':<10} | {np.mean(accuracies):<12.4f} | {np.mean(disparities):<20.4f}")
@@ -69,16 +69,25 @@ train_and_test(x1.to_frame(), y)
 print("=" * 50)
 
 #PART C
-# discontinuities when on decision boundary?
-# sigmoid function on disparity term
-# \frac{1}{1+e^{-x}}
 
+def calc_disparity(X_val, y_val, group_val, model):
+    weights_list = []
+    with torch.no_grad():
+        logits_val = model(X_val).squeeze()
+        probs_val = torch.sigmoid(logits_val)
+        y_pred = (probs_val >= 0.5).float()
+        
+        acc = (y_pred == y_val).float().mean().item()
+        prob_g0 = y_pred[group_val == 0].mean().item()
+        prob_g1 = y_pred[group_val == 1].mean().item()
+        disparity = abs(prob_g0 - prob_g1)
+        w = model.weight.squeeze().cpu().numpy()
+        weights_list.append(w)
+    # print(f"{i+1:<10} | {acc:<12.4f} | {disparity:<20.4f}")
+    return acc, disparity, weights_list
+    
 
 # PART D
-
-
-
-
 
 #minimize Logistic Regression loss function (log loss) and add disparity term
 #output weights 
@@ -95,7 +104,7 @@ def fairness_loss(model, X, y_true, g_train, lam):
     
     return loss + lam * disparity
 
-def train_model(model, x_train, y_train, group_train, lam=1.0, lr=0.01, epochs=100):
+def train_model(model, x_train, y_train, group_train, lam=1.0, lr=0.01, epochs=200):
     optimizer = optim.Adam(model.parameters(), lr=lr)
     for _ in range(epochs):
         optimizer.zero_grad()
@@ -107,14 +116,14 @@ def train_model(model, x_train, y_train, group_train, lam=1.0, lr=0.01, epochs=1
 def train_pytorch(input, lam):
     accuracies = []
     disparities = []
+    all_weights = []
 
-    print(f"{'Fold':<10} | {'Accuracy':<12} | {'Demographic Disparity':<20}")
-    print("-" * 50)
+    # print(f"{'Fold':<10} | {'Accuracy':<12} | {'Demographic Disparity':<20}")
+    # print("-" * 50)
     
     X_tensor = torch.tensor(input.values, dtype=torch.float32)
     y_tensor = torch.tensor(y.values, dtype=torch.float32)
     groups_tensor = torch.tensor(groups.values, dtype=torch.int64)
-
     for i, (train_idx, val_idx) in enumerate(kf.split(input)):
         X_train, X_val = X_tensor[train_idx], X_tensor[val_idx]
         y_train, y_val = y_tensor[train_idx], y_tensor[val_idx]
@@ -124,42 +133,54 @@ def train_pytorch(input, lam):
 
         model = train_model(model, X_train, y_train, group_train, lam=lam)
         
-        with torch.no_grad():
-            logits_val = model(X_val).squeeze()
-            probs_val = torch.sigmoid(logits_val)
-            y_pred = (probs_val >= 0.5).float()
-            
-            acc = (y_pred == y_val).float().mean().item()
-            prob_g0 = y_pred[group_val == 0].mean().item()
-            prob_g1 = y_pred[group_val == 1].mean().item()
-            disparity = abs(prob_g0 - prob_g1)
+        accuracy, disparity, weights = calc_disparity(X_val, y_val, group_val, model)
+        accuracies.append(accuracy)
+        disparities.append(disparity)
+        all_weights.append(weights)
 
-            accuracies.append(acc)
-            disparities.append(disparity)
-            print(f"{i+1:<10} | {acc:<12.4f} | {disparity:<20.4f}")
+    all_weights = np.stack(all_weights, axis=0)
+    mean_weights = np.mean(all_weights, axis=0)
     mean_acc = np.mean(accuracies)
     mean_disp = np.mean(disparities)
-    print("-" * 40)
-    print(f"{'AVERAGE':<10} | {np.mean(accuracies):<12.4f} | {np.mean(disparities):<20.4f}")
-    return mean_acc, mean_disp
+    #print("-" * 40)
+    #print(f"{'AVERAGE':<10} | {np.mean(accuracies):<12.4f} | {np.mean(disparities):<20.4f}")
+    return mean_acc, mean_disp, mean_weights
     
 # Running part D for plot
 def run_plot(X, title):
     accuracies_list = []
     disparities_list = []
-    regs = np.arange(0.0, 1.05, 0.05)
+    weights_list = []
+    regs = [0, 0.1, 0.5, 1, 5, 10, 20, 50]
     
     for reg in regs:
-        acc, disp = train_pytorch(X, reg)
+        acc, disp, w = train_pytorch(X, reg)
         if reg == 0:
             print("When disparity strength is 0: Disparity: ", disp, "  Accuracy: ", acc)
         accuracies_list.append(acc)
         disparities_list.append(disp)
-    
-    plt.plot(disparities_list, accuracies_list)
+        weights_list.append(w)
+    weights_array = np.stack(weights_list, axis=0)
+    plt.scatter(disparities_list, accuracies_list)
     plt.xlabel('Demographic Disparity')
     plt.ylabel('Accuracy')
     plt.title(title)
+    plt.grid(True)
+    plt.savefig(title)
+    plt.figure()
+    for j in range(weights_array.shape[1]):
+        plt.plot(
+            regs,
+            weights_array[:, j],
+            marker='o',
+            label=f"Feature {j}"
+        )
+
+    plt.xscale("log")
+    plt.xlabel("regularization λ")
+    plt.ylabel("Average weight value")
+    plt.title("Feature weights vs disparity regularization")
+    plt.legend()
     plt.grid(True)
     plt.show()
 
@@ -168,5 +189,34 @@ def run_plot(X, title):
 run_plot(pd.concat([x1, x2], axis=1), "Accuracy-Disparity Tradeoff (x1, x2)")
          
 # PART E
-run_plot(pd.concat([x1, x2, groups], axis=1), "Accuracy–Disparity Tradeoff (x1, x2, group)")
+run_plot(pd.concat([x1, x2, groups], axis=1), "Accuracy-Disparity Tradeoff (x1, x2, group)")
 
+
+"""
+PART F
+
+In parts (D) and (E), how do the coefficients of x1, x2, and group change as the strength 
+of the disparity term in the loss function increases? Give an intuitive explanation for why 
+the coefficients change the way they do.
+
+# TODO
+
+PART G
+
+Comparing your accuracy-vs-disparity curves in parts (D) and (E), which option gives a 
+better tradeoff: using group or not using group?
+
+# TODO finish: Using group gives a better tradeoff as seen by the graph which has more points with 
+higher accuracy for lower disparity.
+
+
+PART H
+
+Describe a decision-making scenario that might have led to this toy problem. Specifically, 
+state what the outcome, x1, x2, and group variables are. In this scenario, describe which 
+classifier (if any) would you use and what factors would you consider in making your choice
+
+# TODO
+
+
+"""
